@@ -52,14 +52,14 @@ def initiate_device_flow() -> dict:
     nonce = str(uuid.uuid4())
     machine_id = str(uuid.uuid4())
 
-    # Build the oauth_callback params (mirrors 9Router dashboard)
+    # Build the oauth_callback params (mirrors Qoder client flow)
     callback_params = urlencode(
         {
+            "nonce": nonce,
             "challenge": challenge,
             "challenge_method": "S256",
-            "directLogin": "true",
+            "redirect_uri": config.QODER_REDIRECT_URI,
             "machine_id": machine_id,
-            "nonce": nonce,
         }
     )
     callback_url = f"{config.QODER_LOGIN_URL}?{callback_params}"
