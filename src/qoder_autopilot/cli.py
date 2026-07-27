@@ -29,6 +29,7 @@ from .infra.ninerouter import add_to_9router_device
 from .infra.temp_mail import TempMail
 from .register import register_and_verify
 from .utils.logger import log, log_debug, log_err, log_ok, log_warn, set_account_tag
+from .utils.proxypool import ProxyPool
 
 
 async def run_one(
@@ -262,7 +263,30 @@ async def main_async(args: argparse.Namespace) -> None:
         log_file_handle = set_log_file(args.log_file)
         log(f"📝 Logging to: {args.log_file}")
 
-    proxy = args.proxy
+    # ── Proxy setup: single --proxy or auto-load from proxy.txt ──
+    proxy_pool = None
+    if args.proxy:
+        # Single proxy via --proxy flag (backward compat)
+        single_proxy = args.proxy
+    else:
+        # Try to load from ProxyPool (proxy.txt)
+        pool = ProxyPool()
+        if pool:
+            proxy_pool = pool
+            log(f"   🌀 ProxyPool: {pool.count} proxies loaded from {pool.path}")
+        else:
+            log("   ℹ️  No proxy set — running without proxy")
+        single_proxy = None
+
+    def _get_proxy() -> str | None:
+        """Get next proxy from pool, or None."""
+        if single_proxy:
+            return single_proxy
+        if proxy_pool:
+            p = proxy_pool.get()
+            return p["http"] if p else None
+        return None
+
     output_format = args.output_format
 
     # U5: Dry-run mode
@@ -290,12 +314,13 @@ async def main_async(args: argparse.Namespace) -> None:
         async def staggered_run(i: int) -> dict | None:
             if i > 0:
                 await asyncio.sleep(i * 2)
+            p = _get_proxy()
             return await run_one(
                 headless=headless,
                 use_oauth=use_oauth,
                 manual_captcha=manual_captcha,
                 acct_num=i + 1,
-                proxy=proxy,
+                proxy=p,
             )
 
         tasks = [staggered_run(i) for i in range(args.count)]
@@ -310,12 +335,13 @@ async def main_async(args: argparse.Namespace) -> None:
         results = []
         for i in range(args.count):
             log(f"\n{'─' * 60}\n📦 Account {i + 1}/{args.count}\n{'─' * 60}")
+            p = _get_proxy()
             r = await run_one(
                 headless=headless,
                 use_oauth=use_oauth,
                 manual_captcha=manual_captcha,
                 acct_num=i + 1 if args.count > 1 else 0,
-                proxy=proxy,
+                proxy=p,
             )
             results.append(r)
             if i < args.count - 1:
