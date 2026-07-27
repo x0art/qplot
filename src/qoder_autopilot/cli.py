@@ -20,6 +20,7 @@ import sys
 from .auth.credentials import save_creds
 from .auth.identity import gen_identity
 from .auth.oauth import initiate_device_flow, poll_device_token
+from .auth.trial import claim_pro_trial
 from .browser.camoufox import launch_browser, setup_page
 from .browser.window_tiler import get_screen_size
 from .errors import NineRouterDBNotFound, NineRouterError
@@ -129,7 +130,15 @@ async def run_one(
     if pat:
         log_ok(f"🔑 PAT: {pat[:20]}...")
 
-    # 4. Poll for device token + connect to 9Router
+    # 4. Claim Pro trial (300 Credits / 14 days)
+    if pat:
+        trial_ok = await asyncio.to_thread(claim_pro_trial, pat)
+        if trial_ok:
+            log_ok(f"🏆 {email} → Pro trial claimed!")
+        else:
+            log_warn(f"{email} Pro trial claim skipped or failed (non-fatal)")
+
+    # 5. Poll for device token + connect to 9Router
     if flow:
         log("📋 Step 4/4: Polling device token...")
         device_token = await asyncio.to_thread(
@@ -193,7 +202,7 @@ async def run_one(
             )
             return None
     else:
-        log("⚠️ No OAuth flow — just registration done")
+        log("⚠️ No OAuth flow — registration + trial complete")
         save_creds(
             {
                 "email": email,
