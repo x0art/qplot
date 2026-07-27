@@ -104,9 +104,29 @@ qoder-autopilot --manual-captcha --no-oauth
 # Show browser windows
 qoder-autopilot --manual-captcha --no-headless
 
+# Use proxy pool (round-robin through proxies in proxy.txt)
+qoder-autopilot --proxy-pool
+
+# Use proxy pool from a custom file
+qoder-autopilot --proxy-pool my-proxies.txt
+
+# Single proxy (backward compat)
+qoder-autopilot --proxy socks5://user:pass@host:1080
+
 # Custom delay between accounts (seconds)
 qoder-autopilot -n 3 --manual-captcha --delay 60
 ```
+
+### Proxy pool format (`proxy.txt`)
+
+```
+# Lines starting with # are ignored
+http://user:pass@host:10000
+socks5://user:pass@host:1080
+http://user2:pass2@host:10001
+```
+
+Drop your proxies into `proxy.txt` in the working directory, then use `--proxy-pool` to rotate through them — one per account, round-robin.
 
 ## 📋 All Commands
 
@@ -137,7 +157,8 @@ qoder-autopilot -n 3 --manual-captcha --delay 60
 | `--verbose`, `-v` | Show debug-level logs | `false` |
 | `--quiet`, `-q` | Only show errors and warnings | `false` |
 | `--dry-run` | Validate configuration and exit | `false` |
-| `--proxy URL` | Proxy for browser (socks5://host:port, http://host:port) | `none` |
+| `--proxy URL` | Single proxy for browser (socks5://host:port, http://host:port) | `none` |
+| `--proxy-pool [FILE]` | Proxy pool — rotate through proxies from FILE (default: `proxy.txt`). Each account gets the next proxy in round-robin order. | `none` |
 | `--format {text,json,csv}` | Output format for results | `text` |
 | `--log-file PATH` | Write all logs to a file | `none` |
 | `--no-oauth` | Skip 9Router OAuth, just register | `false` |
