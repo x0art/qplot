@@ -263,20 +263,25 @@ async def main_async(args: argparse.Namespace) -> None:
         log_file_handle = set_log_file(args.log_file)
         log(f"📝 Logging to: {args.log_file}")
 
-    # ── Proxy setup: single --proxy or auto-load from proxy.txt ──
+    # ── Proxy setup: single --proxy or --proxy-pool ──
     proxy_pool = None
+    single_proxy = None
+
     if args.proxy:
         # Single proxy via --proxy flag (backward compat)
         single_proxy = args.proxy
-    else:
-        # Try to load from ProxyPool (proxy.txt)
-        pool = ProxyPool()
+        if args.proxy_pool is not None:
+            log_warn("Both --proxy and --proxy-pool given. Using --proxy (single).")
+    elif args.proxy_pool is not None:
+        # Proxy pool mode (--proxy-pool [FILE])
+        pool = ProxyPool(path=args.proxy_pool)
         if pool:
             proxy_pool = pool
             log(f"   🌀 ProxyPool: {pool.count} proxies loaded from {pool.path}")
         else:
-            log("   ℹ️  No proxy set — running without proxy")
-        single_proxy = None
+            log_warn(f"   ⚠️ ProxyPool: no proxies found in {pool.path}")
+    else:
+        log("   ℹ️  No proxy set — running without proxy")
 
     def _get_proxy() -> str | None:
         """Get next proxy from pool, or None."""
@@ -510,7 +515,17 @@ def main() -> None:
         type=str,
         default=None,
         metavar="URL",
-        help="Proxy URL for browser (e.g. socks5://host:port, http://host:port)",
+        help="Proxy URL for browser (e.g. socks5://host:port, http://host:port). "
+        "Use --proxy-pool instead to rotate through multiple proxies.",
+    )
+    p.add_argument(
+        "--proxy-pool",
+        nargs="?",
+        const="proxy.txt",
+        default=None,
+        metavar="FILE",
+        help="Use proxy pool — rotate through proxies from FILE (default: proxy.txt). "
+        "Each account gets the next proxy in round-robin order.",
     )
     p.add_argument(
         "--format",
