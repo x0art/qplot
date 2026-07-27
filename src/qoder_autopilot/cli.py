@@ -370,6 +370,10 @@ def main() -> None:
             _handle_relay_command(sys.argv[2:])
             return
 
+        if sub == "pat":
+            _handle_pat_command(sys.argv[2:])
+            return
+
         if sub == "doctor":
             from .setup.doctor import run_doctor
 
@@ -398,6 +402,7 @@ def main() -> None:
             "  doctor           🩺 Health check — verify dependencies & configs\n"
             "  deploy           Deploy your own temp mail Cloudflare Worker\n"
             "  relay            Start relay server for remote 9Router\n"
+            "  pat              List or retrieve Personal Access Tokens from saved accounts\n"
             "  config           Manage configuration (show/set/get/reset)\n"
             "\n"
             "examples:\n"
@@ -600,6 +605,86 @@ def _handle_config_command(argv: list[str]) -> None:
         print(f"❌ Unknown command: {cmd}")
         print("Run 'qoder-autopilot config --help' for usage")
         sys.exit(1)
+
+
+def _handle_pat_command(argv: list[str]) -> None:
+    """Handle 'qoder-autopilot pat' subcommand — retrieve PATs from saved accounts."""
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        prog="qoder-autopilot pat",
+        description="Retrieve Personal Access Tokens from saved accounts in qoder_accounts.json",
+    )
+    parser.add_argument(
+        "--email",
+        type=str,
+        default=None,
+        metavar="EMAIL",
+        help="Filter by email (shows PAT for specific account)",
+    )
+    parser.add_argument(
+        "--format",
+        choices=["text", "json", "csv"],
+        default="text",
+        dest="output_format",
+        help="Output format (default: text)",
+    )
+
+    if argv and argv[0] in ("-h", "--help"):
+        parser.print_help()
+        return
+
+    args = parser.parse_args(argv)
+
+    from .auth.credentials import load_creds
+
+    accounts = load_creds()
+    if not accounts:
+        print("❌ No saved accounts found in qoder_accounts.json")
+        return
+
+    # Filter by email if requested
+    if args.email:
+        accounts = [a for a in accounts if a.get("email") == args.email]
+        if not accounts:
+            print(f"❌ No account found with email: {args.email}")
+            return
+
+    # Build output data
+    results = []
+    for acc in accounts:
+        pat = acc.get("pat", "")
+        results.append(
+            {
+                "email": acc.get("email", "?"),
+                "pat": pat if pat else "N/A",
+                "display_name": acc.get("display_name", "?"),
+                "status": acc.get("status", "?"),
+            }
+        )
+
+    out_format = args.output_format
+    if out_format == "json":
+        import json
+
+        print(json.dumps(results, indent=2))
+    elif out_format == "csv":
+        print("email,pat,display_name,status")
+        for r in results:
+            print(f"{r['email']},{r['pat']},{r['display_name']},{r['status']}")
+    else:
+        # Text output
+        print()
+        print(f"{'Email':<40} {'PAT':<30} {'Name':<25} {'Status':<20}")
+        print("─" * 115)
+        for r in results:
+            pat_display = r["pat"][:27] + "..." if len(r["pat"]) > 30 else r["pat"]
+            print(f"{r['email']:<40} {pat_display:<30} {r['display_name']:<25} {r['status']:<20}")
+        print()
+        print(f"📊 {len(results)} account(s)")
+        print()
+        print("💡 To get PAT for a specific account:")
+        print("   qoder-autopilot pat --email user@example.com")
 
 
 def _handle_relay_command(argv: list[str]) -> None:

@@ -117,6 +117,8 @@ qoder-autopilot -n 3 --manual-captcha --delay 60
 | `qoder-autopilot doctor` | 🩺 Health check — verify all dependencies & configs |
 | `qoder-autopilot deploy` | Deploy your own temp mail worker |
 | `qoder-autopilot relay` | Start relay server for remote 9Router |
+| `qoder-autopilot pat` | List or retrieve PATs from saved accounts in `qoder_accounts.json` |
+| `qoder-autopilot pat --email user@example.com` | Show PAT for a specific account email |
 | `qoder-autopilot config` | Show config help + available keys |
 | `qoder-autopilot config show` | Show all current settings with source |
 | `qoder-autopilot config get <key>` | Get a specific config value |

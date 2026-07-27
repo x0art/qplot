@@ -385,11 +385,27 @@ async def register_and_verify(
             return True, None
 
         # ═══ STEP 6: Create PAT (Personal Access Token) ═══
+        # Save the current URL (OAuth callback page) BEFORE navigating to integrations
+        # so we can restore it after PAT creation. Otherwise the OAuth handshake JS
+        # on /device/selectAccounts never fires and device token polling fails.
+        oauth_url = page.url
+        log(f"   🔖 Saved OAuth callback URL before PAT creation")
+
         pat = await create_pat(page)
         if pat:
             log_ok(f"🔑 PAT created: {pat[:20]}...")
         else:
             log_warn("PAT creation skipped or failed (non-fatal)")
+
+        # Navigate back to the OAuth callback URL so the handshake completes.
+        # The /device/selectAccounts page has JS that confirms the nonce to Qoder's API.
+        # If we skip this, the device token polling below will time out.
+        try:
+            await page.goto(oauth_url, wait_until="networkidle", timeout=30000)
+            await asyncio.sleep(2)
+            log("   🔄 Restored OAuth callback URL — handshake ready")
+        except Exception as e:
+            log_warn(f"Failed to restore OAuth URL (non-fatal): {e}")
 
         return True, pat
 
