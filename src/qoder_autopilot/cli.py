@@ -98,7 +98,7 @@ async def run_one(
     ) as browser:
         page = await browser.new_page()
         await setup_page(page)
-        verified = await register_and_verify(
+        verified, pat = await register_and_verify(
             page,
             email,
             ident,
@@ -126,6 +126,8 @@ async def run_one(
         return None
 
     log_ok("Account registered & verified! ✅")
+    if pat:
+        log_ok(f"🔑 PAT: {pat[:20]}...")
 
     # 4. Poll for device token + connect to 9Router
     if flow:
@@ -165,6 +167,7 @@ async def run_one(
                     "refresh_token": device_token.get("refresh_token", ""),
                     "user_id": device_token.get("user_id", ""),
                     "machine_id": flow["machine_id"],
+                    "pat": pat or "",
                     "9router": router_ok,
                     "status": "success",
                 }
@@ -173,7 +176,10 @@ async def run_one(
                 log_ok(f"🎉 {email} → 9Router connected")
             else:
                 log_warn(f"{email} registered but 9Router failed")
-            return {"email": email, "token": device_token["token"]}
+            result: dict = {"email": email, "token": device_token["token"]}
+            if pat:
+                result["pat"] = pat
+            return result
         else:
             log_err("Device token poll failed — account verified but no token")
             save_creds(
@@ -181,6 +187,7 @@ async def run_one(
                     "email": email,
                     "password": ident["password"],
                     "display_name": ident["display_name"],
+                    "pat": pat or "",
                     "status": "verified_no_token",
                 }
             )
@@ -192,10 +199,14 @@ async def run_one(
                 "email": email,
                 "password": ident["password"],
                 "display_name": ident["display_name"],
+                "pat": pat or "",
                 "status": "verified_no_oauth",
             }
         )
-        return {"email": email}
+        result: dict = {"email": email}
+        if pat:
+            result["pat"] = pat
+        return result
 
 
 async def main_async(args: argparse.Namespace) -> None:

@@ -15,6 +15,7 @@ Quick start::
 __version__ = "0.6.3"
 
 from .auth.oauth import initiate_device_flow, poll_device_token
+from .auth.pat import create_pat
 from .captcha import CaptchaSolver
 from .cli import run_one
 from .errors import (
@@ -38,6 +39,7 @@ __all__ = [
     # Core functions
     "register_and_verify",
     "run_one",
+    "create_pat",
     # Services
     "TempMail",
     "initiate_device_flow",

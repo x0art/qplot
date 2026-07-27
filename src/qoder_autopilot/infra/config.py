@@ -136,6 +136,10 @@ class Settings(BaseSettings):
         default="https://openapi.qoder.sh/api/v1/userinfo",
         description="Qoder user profile endpoint",
     )
+    qoder_integrations_url: str = Field(
+        default="https://qoder.com/account/integrations",
+        description="Qoder integrations page URL (for PAT creation)",
+    )
 
     # ── 9Router Integration ───────────────────────────────────────────────
     ninerouter_url: str = Field(
@@ -245,6 +249,7 @@ QODER_SIGNIN_URL = settings.qoder_signin_url
 QODER_LOGIN_URL = settings.qoder_login_url
 QODER_DEVICE_TOKEN_URL = settings.qoder_device_token_url
 QODER_USERINFO_URL = settings.qoder_userinfo_url
+QODER_INTEGRATIONS_URL = settings.qoder_integrations_url
 
 # 9Router
 NINEROUTER_URL = settings.ninerouter_url

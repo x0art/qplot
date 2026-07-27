@@ -16,6 +16,7 @@ import random
 import time
 
 from .auth.otp import extract_otp
+from .auth.pat import create_pat
 from .browser.window_tiler import tile_all_camoufox_windows
 from .captcha.solver import CaptchaSolver
 from .infra import config
@@ -30,7 +31,7 @@ async def register_and_verify(
     auth_url: str | None = None,
     manual_captcha: bool = False,
     acct_num: int = 0,
-) -> bool:
+) -> tuple[bool, str | None]:
     """Full registration flow via OAuth or direct sign-up.
 
     If auth_url is provided, opens the OAuth URL and clicks 'Sign up'.
@@ -45,7 +46,9 @@ async def register_and_verify(
         acct_num: Account number for logging (parallel mode).
 
     Returns:
-        True if registration was verified, False otherwise.
+        Tuple of (verified: bool, pat: str | None).
+        verified is True if registration was verified, False otherwise.
+        pat is the Personal Access Token if PAT creation succeeded, None otherwise.
     """
     config.SCREENSHOTS_DIR.mkdir(exist_ok=True)
     captcha_solver = CaptchaSolver(manual=manual_captcha)
@@ -146,7 +149,7 @@ async def register_and_verify(
                 if attempt == 2:
                     await page.screenshot(path=str(config.SCREENSHOTS_DIR / "step1_stuck.png"))
                     log("   ❌ Step 2 never appeared!")
-                    return False
+                    return False, None
 
         # ═══ STEP 2: Password ═══
         log_step(4, 7, "Step 2 — Entering password...")
@@ -191,7 +194,7 @@ async def register_and_verify(
             if not pw_filled:
                 log_err("Password fill completely failed")
                 await page.screenshot(path=str(config.SCREENSHOTS_DIR / "pw_fail.png"))
-                return False
+                return False, None
 
         await asyncio.sleep(1.5)
         await page.screenshot(path=str(config.SCREENSHOTS_DIR / "after_pw_submit.png"))
@@ -279,7 +282,7 @@ async def register_and_verify(
             captcha_ok = await captcha_solver.solve(page)
             if not captcha_ok:
                 await page.screenshot(path=str(config.SCREENSHOTS_DIR / "captcha_fail.png"))
-                return False
+                return False, None
             await asyncio.sleep(1)
 
         # ═══ Wait for OTP page ═══
@@ -296,7 +299,7 @@ async def register_and_verify(
         if otp_count == 0 and "enter the code" not in page_text2 and "otp" not in page_text2:
             log_err("OTP page didn't appear after captcha solve")
             await page.screenshot(path=str(config.SCREENSHOTS_DIR / "no_otp_page.png"))
-            return False
+            return False, None
 
         # ═══ STEP 4: Wait for OTP email ═══
         log_step(6, 7, "Waiting for OTP email...")
@@ -320,7 +323,7 @@ async def register_and_verify(
 
         if not otp:
             log_err(f"OTP not received within {config.OTP_TIMEOUT}s")
-            return False
+            return False, None
 
         # ═══ STEP 5: Input OTP ═══
         log_step(7, 7, "Entering OTP...")
@@ -334,7 +337,7 @@ async def register_and_verify(
             log_ok("OTP entered!")
         else:
             log_err(f"Expected {len(otp)} OTP inputs, found {count}")
-            return False
+            return False, None
 
         await asyncio.sleep(1.5)
 
@@ -350,9 +353,11 @@ async def register_and_verify(
         }""")
         if captcha_back:
             log_err("Captcha reappeared after OTP — marking as failed")
-            return False
+            return False, None
 
         # Check if verified (redirect or success message)
+        verified = False
+        final_text = ""
         try:
             await page.wait_for_url(
                 lambda url: any(
@@ -361,21 +366,32 @@ async def register_and_verify(
                 timeout=15000,
             )
             log_ok("Account verified and redirected!")
-            return True
+            verified = True
         except Exception:
             pass
 
-        # Check page text for success indicators
-        final_text = (
-            await page.evaluate("() => document.body?.innerText?.substring(0, 500) || ''")
-        ).lower()
-        if any(kw in final_text for kw in ["verified", "success", "welcome"]):
-            log_ok("Account verified!")
-            return True
+        if not verified:
+            # Check page text for success indicators
+            final_text = (
+                await page.evaluate("() => document.body?.innerText?.substring(0, 500) || ''")
+            ).lower()
+            if any(kw in final_text for kw in ["verified", "success", "welcome"]):
+                log_ok("Account verified!")
+                verified = True
 
-        await page.screenshot(path=str(config.SCREENSHOTS_DIR / "otp_result.png"))
-        log(f"   Page after OTP: {final_text[:200]}")
-        return True
+        if not verified:
+            await page.screenshot(path=str(config.SCREENSHOTS_DIR / "otp_result.png"))
+            log(f"   Page after OTP: {final_text[:200]}")
+            return True, None
+
+        # ═══ STEP 6: Create PAT (Personal Access Token) ═══
+        pat = await create_pat(page)
+        if pat:
+            log_ok(f"🔑 PAT created: {pat[:20]}...")
+        else:
+            log_warn("PAT creation skipped or failed (non-fatal)")
+
+        return True, pat
 
     except Exception as e:
         log_err(f"Register error: {e}")
@@ -383,4 +399,4 @@ async def register_and_verify(
             await page.screenshot(path=str(config.SCREENSHOTS_DIR / "error.png"))
         except Exception:
             pass  # Browser already closed (e.g. Ctrl+C)
-        return False
+        return False, None

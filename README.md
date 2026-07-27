@@ -1,20 +1,13 @@
-# 🤖 Qoder Autopilot
+# 🤖 Qplot
 
 Automated [Qoder](https://qoder.com) account registration with anti-detect browser, multi-strategy captcha solving, and [9Router](https://github.com/nicepkg/9router) OAuth device token integration.
 
 > Register Qoder accounts → solve captchas → verify OTP → auto-connect to 9Router. All in one command.
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
-[![PyPI version](https://img.shields.io/pypi/v/qoder-autopilot.svg)](https://pypi.org/project/qoder-autopilot/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Camoufox](https://img.shields.io/badge/browser-Camoufox-orange.svg)](https://camoufox.com/)
-[![Tests](https://github.com/Daivageralda/qoder-autopilot/actions/workflows/test.yml/badge.svg)](https://github.com/Daivageralda/qoder-autopilot/actions/workflows/test.yml)
-
----
-
-> **📦 Published on PyPI** — [pypi.org/project/qoder-autopilot](https://pypi.org/project/qoder-autopilot/)
->
-> Install with `pip install qoder-autopilot` — no clone needed.
+[![Tests](https://github.com/x0art/qplot/actions/workflows/test.yml/badge.svg)](https://github.com/x0art/qplot/actions/workflows/test.yml)
 
 ## ✨ Features
 
@@ -48,8 +41,8 @@ pip install qoder-autopilot[full]
 ### From source (development)
 
 ```bash
-git clone https://github.com/Daivageralda/qoder-autopilot.git
-cd qoder-autopilot
+git clone https://github.com/x0art/qplot.git
+cd qplot
 
 # Basic install
 pip install -e .
@@ -280,6 +273,7 @@ qoder-autopilot takes security seriously:
 
 ## 🔗 Related
 
+- [**Qoder Autopilot**](https://github.com/Daivageralda/qoder-autopilot) — Original upstream project
 - [**cf-mail-worker**](https://github.com/Daivageralda/cf-mail-worker) — Self-hosted temp mail API (Cloudflare Workers + D1)
 - [**bulk-temp-mail**](https://github.com/Daivageralda/temp-mail-generator) — Full temp mail service with React frontend
 
