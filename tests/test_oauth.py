@@ -87,15 +87,34 @@ class TestInitiateDeviceFlow:
         flow = initiate_device_flow()
         assert f"nonce={flow['nonce']}" in flow["callback_url"]
 
-    def test_callback_url_has_client_id(self):
+    def test_callback_url_has_no_client_id(self):
         flow = initiate_device_flow()
-        assert "client_id=" in flow["callback_url"]
-        # Verify default client_id value
-        assert "e883ade2-e6e3-4d6d-adf7-f92ceff5fdcb" in flow["callback_url"]
+        assert "client_id=" not in flow["callback_url"]
 
-    def test_callback_url_has_no_redirect_uri(self):
+    def test_callback_url_has_redirect_uri(self):
         flow = initiate_device_flow()
-        assert "redirect_uri=" not in flow["callback_url"]
+        assert "redirect_uri=" in flow["callback_url"]
+        assert "qoder%3A%2F%2Faicoding.aicoding-agent%2Flogin-success" in flow["callback_url"]
+
+    def test_nonce_is_hex_without_dashes(self):
+        flow = initiate_device_flow()
+        assert len(flow["nonce"]) == 32
+        assert "-" not in flow["nonce"]
+        # Should be valid hex
+        int(flow["nonce"], 16)
+
+    def test_machine_id_is_base64url(self):
+        flow = initiate_device_flow()
+        assert len(flow["machine_id"]) == 108  # 81 bytes → 108 chars base64url
+        assert "+" not in flow["machine_id"]
+        assert "/" not in flow["machine_id"]
+        assert "=" not in flow["machine_id"]  # no padding
+
+    def test_callback_params_order_nonce_first(self):
+        flow = initiate_device_flow()
+        # nonce should be the first query param after the base URL
+        after_qs = flow["callback_url"].split("?", 1)[1]
+        assert after_qs.startswith("nonce="), f"Expected nonce first, got: {after_qs[:50]}"
 
     def test_unique_flows(self):
         flows = [initiate_device_flow() for _ in range(5)]

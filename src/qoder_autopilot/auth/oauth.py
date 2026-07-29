@@ -43,26 +43,29 @@ def generate_pkce_pair() -> tuple[str, str]:
 
 
 def initiate_device_flow() -> dict:
-    """Generate the full device auth URL and parameters (real Qoder format).
+    """Generate the full device auth URL and parameters (latest Qoder format).
 
-    Matches the actual URL format from Qoder's client, which includes
-    `client_id` and omits `redirect_uri` in the selectAccounts URL.
+    Matches the URL format observed from Qoder's client, which includes:
+    - nonce as 32-char hex string (uuid hex, no dashes)
+    - machine_id as 108-char base64url string (81 random bytes)
+    - redirect_uri on the selectAccounts URL
+    - No client_id on the selectAccounts URL
 
     Returns:
         dict with keys: auth_url, callback_url, verifier, challenge, nonce, machine_id
     """
     verifier, challenge = generate_pkce_pair()
-    nonce = str(uuid.uuid4())
-    machine_id = str(uuid.uuid4())
+    nonce = uuid.uuid4().hex  # 32-char hex, no dashes
+    machine_id = base64url_encode(os.urandom(81))  # 108-char base64url
 
-    # Build the oauth_callback params (matches actual Qoder client format)
+    # Build the oauth_callback params (matches latest Qoder client format)
     callback_params = urlencode(
         {
+            "nonce": nonce,
             "challenge": challenge,
             "challenge_method": "S256",
-            "nonce": nonce,
+            "redirect_uri": config.QODER_REDIRECT_URI,
             "machine_id": machine_id,
-            "client_id": config.QODER_CLIENT_ID,
         }
     )
     callback_url = f"{config.QODER_LOGIN_URL}?{callback_params}"
