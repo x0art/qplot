@@ -144,6 +144,10 @@ class Settings(BaseSettings):
         default="qoder://aicoding.aicoding-agent/login-success",
         description="OAuth redirect URI (deep link for Qoder client)",
     )
+    qoder_client_id: str = Field(
+        default="e883ade2-e6e3-4d6d-adf7-f92ceff5fdcb",
+        description="Qoder OAuth client ID (fixed identifier for the desktop client)",
+    )
     qoder_trial_url: str = Field(
         default="https://openapi.qoder.sh/api/v1/user/trial",
         description="Qoder Pro trial activation API endpoint",
@@ -259,6 +263,7 @@ QODER_DEVICE_TOKEN_URL = settings.qoder_device_token_url
 QODER_USERINFO_URL = settings.qoder_userinfo_url
 QODER_INTEGRATIONS_URL = settings.qoder_integrations_url
 QODER_REDIRECT_URI = settings.qoder_redirect_uri
+QODER_CLIENT_ID = settings.qoder_client_id
 QODER_TRIAL_URL = settings.qoder_trial_url
 
 # 9Router

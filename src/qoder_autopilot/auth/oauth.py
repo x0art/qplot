@@ -43,7 +43,10 @@ def generate_pkce_pair() -> tuple[str, str]:
 
 
 def initiate_device_flow() -> dict:
-    """Generate the full device auth URL and parameters.
+    """Generate the full device auth URL and parameters (original format).
+
+    Uses `redirect_uri` in the selectAccounts URL (reverse-engineered from
+    Qoder's older client flow).
 
     Returns:
         dict with keys: auth_url, callback_url, verifier, challenge, nonce, machine_id
@@ -60,6 +63,44 @@ def initiate_device_flow() -> dict:
             "challenge_method": "S256",
             "redirect_uri": config.QODER_REDIRECT_URI,
             "machine_id": machine_id,
+        }
+    )
+    callback_url = f"{config.QODER_LOGIN_URL}?{callback_params}"
+
+    # Wrap in sign-in page with oauth_callback
+    auth_url = f"{config.QODER_SIGNIN_URL}?oauth_callback={url_quote(callback_url, safe='')}"
+
+    return {
+        "auth_url": auth_url,
+        "callback_url": callback_url,
+        "verifier": verifier,
+        "challenge": challenge,
+        "nonce": nonce,
+        "machine_id": machine_id,
+    }
+
+
+def initiate_device_flow_real() -> dict:
+    """Generate the full device auth URL and parameters (real Qoder format).
+
+    Matches the actual URL format from Qoder's client, which includes
+    `client_id` and omits `redirect_uri` in the selectAccounts URL.
+
+    Returns:
+        dict with keys: auth_url, callback_url, verifier, challenge, nonce, machine_id
+    """
+    verifier, challenge = generate_pkce_pair()
+    nonce = str(uuid.uuid4())
+    machine_id = str(uuid.uuid4())
+
+    # Build the oauth_callback params (matches actual Qoder client format)
+    callback_params = urlencode(
+        {
+            "challenge": challenge,
+            "challenge_method": "S256",
+            "nonce": nonce,
+            "machine_id": machine_id,
+            "client_id": config.QODER_CLIENT_ID,
         }
     )
     callback_url = f"{config.QODER_LOGIN_URL}?{callback_params}"

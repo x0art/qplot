@@ -7,6 +7,7 @@ from qoder_autopilot.auth.oauth import (
     base64url_encode,
     generate_pkce_pair,
     initiate_device_flow,
+    initiate_device_flow_real,
 )
 
 
@@ -89,5 +90,51 @@ class TestInitiateDeviceFlow:
 
     def test_unique_flows(self):
         flows = [initiate_device_flow() for _ in range(5)]
+        nonces = {f["nonce"] for f in flows}
+        assert len(nonces) == 5, "Nonces should be unique"
+
+
+class TestInitiateDeviceFlowReal:
+    """Test the real Qoder device flow format."""
+
+    def test_returns_all_keys(self):
+        flow = initiate_device_flow_real()
+        required_keys = {
+            "auth_url",
+            "callback_url",
+            "verifier",
+            "challenge",
+            "nonce",
+            "machine_id",
+        }
+        assert set(flow.keys()) == required_keys
+
+    def test_auth_url_contains_signin(self):
+        flow = initiate_device_flow_real()
+        assert "qoder.com/users/sign-in" in flow["auth_url"]
+
+    def test_auth_url_contains_oauth_callback(self):
+        flow = initiate_device_flow_real()
+        assert "oauth_callback=" in flow["auth_url"]
+
+    def test_callback_url_contains_challenge(self):
+        flow = initiate_device_flow_real()
+        assert "challenge=" in flow["callback_url"]
+        assert "challenge_method=S256" in flow["callback_url"]
+
+    def test_callback_url_contains_nonce(self):
+        flow = initiate_device_flow_real()
+        assert f"nonce={flow['nonce']}" in flow["callback_url"]
+
+    def test_callback_url_has_client_id(self):
+        flow = initiate_device_flow_real()
+        assert "client_id=" in flow["callback_url"]
+
+    def test_callback_url_has_no_redirect_uri(self):
+        flow = initiate_device_flow_real()
+        assert "redirect_uri=" not in flow["callback_url"]
+
+    def test_unique_flows(self):
+        flows = [initiate_device_flow_real() for _ in range(5)]
         nonces = {f["nonce"] for f in flows}
         assert len(nonces) == 5, "Nonces should be unique"

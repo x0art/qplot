@@ -19,7 +19,7 @@ import sys
 
 from .auth.credentials import save_creds
 from .auth.identity import gen_identity
-from .auth.oauth import initiate_device_flow, poll_device_token
+from .auth.oauth import initiate_device_flow_real, poll_device_token
 from .auth.trial import claim_pro_trial
 from .browser.camoufox import launch_browser, setup_page
 from .browser.window_tiler import get_screen_size
@@ -78,7 +78,7 @@ async def run_one(
 
     # 3. Register + verify
     log("📋 Step 3/4: OAuth register + device token flow...")
-    flow = initiate_device_flow() if use_oauth else None
+    flow = initiate_device_flow_real() if use_oauth else None
     auth_url = flow["auth_url"] if flow else None
 
     if auth_url:
