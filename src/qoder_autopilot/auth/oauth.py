@@ -2,11 +2,24 @@
 Qoder Autopilot — OAuth / PKCE Device Auth Flow
 =================================================
 Implements the PKCE (Proof Key for Code Exchange) device authorization flow
-for Qoder, reverse-engineered from 9Router's QoderService.
+for Qoder, verified against 9Router's QoderService
+(src/lib/oauth/services/qoder.js + open-sse/providers/registry/qoder.js).
+
+Verified contract (from 9Router):
+    - PKCE verifier = 32 random bytes, base64url, no padding
+    - challenge     = S256 of verifier, base64url, no padding
+    - nonce         = uuid4() — full UUID *with dashes*
+    - machine_id    = uuid4() — full UUID *with dashes*
+    - selectAccounts params (insertion order): challenge, challenge_method=S256,
+      machine_id, nonce — NO redirect_uri, NO client_id
+    - poll endpoint: openapi.qoder.sh/api/v1/deviceToken/poll
+      ?nonce=...&verifier=...&challenge_method=S256 (UA: Go-http-client/2.0)
+      — 202/404 = still pending, 200 + token = authorized
 
 Flow:
     1. Generate PKCE verifier + challenge
-    2. Build auth URL with oauth_callback parameters
+    2. Build auth URL (sign-in page wrapping the selectAccounts callback, so a
+       brand-new account can sign up and then land on the nonce-confirmation page)
     3. User completes auth in browser (sign-up / sign-in)
     4. Poll device token endpoint until authorized
     5. Use access token for API calls
@@ -43,29 +56,35 @@ def generate_pkce_pair() -> tuple[str, str]:
 
 
 def initiate_device_flow() -> dict:
-    """Generate the full device auth URL and parameters (latest Qoder format).
+    """Generate the full device auth URL and parameters (verified against 9Router).
 
-    Matches the URL format observed from Qoder's client, which includes:
-    - nonce as 32-char hex string (uuid hex, no dashes)
-    - machine_id as 108-char base64url string (81 random bytes)
-    - redirect_uri on the selectAccounts URL
-    - No client_id on the selectAccounts URL
+    Mirrors QoderService.initiateDeviceFlow() exactly for the selectAccounts
+    callback params:
+    - nonce as a full uuid4 string *with dashes*
+    - machine_id as a full uuid4 string *with dashes*
+    - param insertion order: challenge, challenge_method=S256, machine_id, nonce
+    - NO redirect_uri and NO client_id (the real 9Router client sends neither)
+
+    auth_url wraps the callback in the sign-in page (oauth_callback=...) so a
+    NEW account can sign up and then land on device/selectAccounts, whose JS
+    confirms the nonce. The bare selectAccounts URL alone assumes the user is
+    already logged in, which would break registration.
 
     Returns:
         dict with keys: auth_url, callback_url, verifier, challenge, nonce, machine_id
     """
     verifier, challenge = generate_pkce_pair()
-    nonce = uuid.uuid4().hex  # 32-char hex, no dashes
-    machine_id = base64url_encode(os.urandom(81))  # 108-char base64url
+    nonce = str(uuid.uuid4())       # full UUID, e.g. "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d"
+    machine_id = str(uuid.uuid4())  # full UUID — matches 9Router's uuidv4()
 
-    # Build the oauth_callback params (matches latest Qoder client format)
+    # Insertion order matches 9Router's URLSearchParams({
+    #   challenge, challenge_method: "S256", machine_id, nonce })
     callback_params = urlencode(
         {
-            "nonce": nonce,
             "challenge": challenge,
             "challenge_method": "S256",
-            "redirect_uri": config.QODER_REDIRECT_URI,
             "machine_id": machine_id,
+            "nonce": nonce,
         }
     )
     callback_url = f"{config.QODER_LOGIN_URL}?{callback_params}"
@@ -86,7 +105,7 @@ def initiate_device_flow() -> dict:
 def poll_device_token(
     nonce: str,
     verifier: str,
-    max_attempts: int = 120,
+    max_attempts: int = 150,
     interval: int = 2,
 ) -> dict | None:
     """Poll Qoder deviceToken endpoint until user authorizes.
@@ -113,7 +132,7 @@ def poll_device_token(
         try:
             r = requests.get(url, headers=headers, timeout=15)
             if r.status_code in (202, 404):
-                # Still pending
+                # Still pending — user hasn't authorized yet
                 if i % 10 == 0 and i > 0:
                     log(f"   ⏳ Poll #{i} — still waiting...")
                 time.sleep(interval)
@@ -123,12 +142,14 @@ def poll_device_token(
                 if body.get("token"):
                     log_ok(f"Device token received! user_id={body.get('user_id', '?')}")
                     return body
-                else:
-                    log(f"   ⚠️ 200 but no token: {body}")
-            else:
-                log(f"   ⚠️ Poll #{i} unexpected status: {r.status_code}")
-            time.sleep(interval)
+                # 200 without a token — upstream shape changed; terminal (matches 9Router)
+                log_err(f"Device token poll returned 200 but no token: {body}")
+                return None
+            # Anything else is a terminal failure (matches 9Router's throw)
+            log_err(f"Device token poll failed: HTTP {r.status_code}")
+            return None
         except requests.RequestException as e:
+            # Transient network errors stay retryable for headless automation
             log(f"   ⚠️ Poll error: {e}")
             time.sleep(interval)
 

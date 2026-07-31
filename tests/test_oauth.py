@@ -1,12 +1,23 @@
-"""Tests for OAuth / PKCE module."""
+"""Tests for OAuth / PKCE module.
+
+Contract verified against 9Router's QoderService
+(src/lib/oauth/services/qoder.js): nonce and machine_id are full uuid4
+strings, and the selectAccounts params are challenge, challenge_method=S256,
+machine_id, nonce — with no redirect_uri and no client_id.
+"""
 
 import base64
 import hashlib
+import uuid
+from unittest import mock
+
+import requests
 
 from qoder_autopilot.auth.oauth import (
     base64url_encode,
     generate_pkce_pair,
     initiate_device_flow,
+    poll_device_token,
 )
 
 
@@ -56,7 +67,7 @@ class TestGeneratePkcePair:
 
 
 class TestInitiateDeviceFlow:
-    """Test device flow initiation (real Qoder format with client_id)."""
+    """Test device flow initiation (verified 9Router contract)."""
 
     def test_returns_all_keys(self):
         flow = initiate_device_flow()
@@ -91,32 +102,135 @@ class TestInitiateDeviceFlow:
         flow = initiate_device_flow()
         assert "client_id=" not in flow["callback_url"]
 
-    def test_callback_url_has_redirect_uri(self):
+    def test_callback_url_has_no_redirect_uri(self):
         flow = initiate_device_flow()
-        assert "redirect_uri=" in flow["callback_url"]
-        assert "qoder%3A%2F%2Faicoding.aicoding-agent%2Flogin-success" in flow["callback_url"]
+        assert "redirect_uri=" not in flow["callback_url"]
 
-    def test_nonce_is_hex_without_dashes(self):
+    def test_callback_url_points_at_selectaccounts(self):
         flow = initiate_device_flow()
-        assert len(flow["nonce"]) == 32
-        assert "-" not in flow["nonce"]
-        # Should be valid hex
-        int(flow["nonce"], 16)
+        assert flow["callback_url"].startswith(
+            "https://qoder.com/device/selectAccounts?"
+        )
 
-    def test_machine_id_is_base64url(self):
+    def test_nonce_is_uuid4(self):
         flow = initiate_device_flow()
-        assert len(flow["machine_id"]) == 108  # 81 bytes → 108 chars base64url
-        assert "+" not in flow["machine_id"]
-        assert "/" not in flow["machine_id"]
-        assert "=" not in flow["machine_id"]  # no padding
+        nonce = flow["nonce"]
+        assert len(nonce) == 36  # full UUID with dashes
+        assert "-" in nonce
+        # Raises ValueError if not a valid UUID
+        assert str(uuid.UUID(nonce)) == nonce
 
-    def test_callback_params_order_nonce_first(self):
+    def test_machine_id_is_uuid4(self):
         flow = initiate_device_flow()
-        # nonce should be the first query param after the base URL
+        machine_id = flow["machine_id"]
+        assert len(machine_id) == 36  # full UUID with dashes
+        assert "-" in machine_id
+        # Raises ValueError if not a valid UUID
+        assert str(uuid.UUID(machine_id)) == machine_id
+
+    def test_callback_params_order_matches_9router(self):
+        flow = initiate_device_flow()
         after_qs = flow["callback_url"].split("?", 1)[1]
-        assert after_qs.startswith("nonce="), f"Expected nonce first, got: {after_qs[:50]}"
+        # 9Router's URLSearchParams insertion order:
+        # challenge, challenge_method, machine_id, nonce
+        assert after_qs.startswith("challenge="), f"Expected challenge first, got: {after_qs[:60]}"
+        assert "&challenge_method=S256&machine_id=" in after_qs
+        assert after_qs.endswith(f"nonce={flow['nonce']}")
 
     def test_unique_flows(self):
         flows = [initiate_device_flow() for _ in range(5)]
         nonces = {f["nonce"] for f in flows}
         assert len(nonces) == 5, "Nonces should be unique"
+
+
+class TestPollDeviceToken:
+    """Test device token polling semantics (verified 9Router contract).
+
+    202/404 = still pending (keep polling), 200 + token = authorized,
+    200 without token and any other status = terminal failure.
+    """
+
+    def test_returns_token_on_200(self):
+        body = {"token": "dt-123", "user_id": "42", "refresh_token": "rt-1"}
+        with mock.patch("time.sleep"), mock.patch(
+            "qoder_autopilot.auth.oauth.requests.get",
+            return_value=mock.Mock(status_code=200, json=lambda: body),
+        ) as m:
+            result = poll_device_token("n", "v", max_attempts=5, interval=0)
+        assert result == body
+        assert m.call_count == 1
+
+    def test_200_without_token_is_terminal(self):
+        with mock.patch("time.sleep"), mock.patch(
+            "qoder_autopilot.auth.oauth.requests.get",
+            return_value=mock.Mock(status_code=200, json=lambda: {}),
+        ) as m:
+            result = poll_device_token("n", "v", max_attempts=5, interval=0)
+        assert result is None
+        assert m.call_count == 1  # terminal — no further polling
+
+    def test_500_is_terminal(self):
+        with mock.patch("time.sleep"), mock.patch(
+            "qoder_autopilot.auth.oauth.requests.get",
+            return_value=mock.Mock(status_code=500, json=lambda: {}),
+        ) as m:
+            result = poll_device_token("n", "v", max_attempts=5, interval=0)
+        assert result is None
+        assert m.call_count == 1
+
+    def test_pending_then_authorized(self):
+        pending = mock.Mock(status_code=202)
+        body = {"token": "dt-9"}
+        ok = mock.Mock(status_code=200, json=lambda: body)
+        with mock.patch("time.sleep"), mock.patch(
+            "qoder_autopilot.auth.oauth.requests.get", side_effect=[pending, ok]
+        ) as m:
+            result = poll_device_token("n", "v", max_attempts=5, interval=0)
+        assert result == body
+        assert m.call_count == 2
+
+    def test_pending_timeout_returns_none(self):
+        pending = mock.Mock(status_code=404)
+        with mock.patch("time.sleep"), mock.patch(
+            "qoder_autopilot.auth.oauth.requests.get", return_value=pending
+        ) as m:
+            result = poll_device_token("n", "v", max_attempts=2, interval=0)
+        assert result is None
+        assert m.call_count == 2  # polled twice, then gave up
+
+    def test_network_error_retries(self):
+        body = {"token": "dt-5"}
+        ok = mock.Mock(status_code=200, json=lambda: body)
+        with mock.patch("time.sleep"), mock.patch(
+            "qoder_autopilot.auth.oauth.requests.get",
+            side_effect=[requests.exceptions.ConnectionError("boom"), ok],
+        ) as m:
+            result = poll_device_token("n", "v", max_attempts=5, interval=0)
+        assert result == body
+        assert m.call_count == 2  # network errors stay retryable
+
+    def test_poll_url_and_headers_match_9router(self):
+        body = {"token": "dt-7"}
+        ok = mock.Mock(status_code=200, json=lambda: body)
+        with mock.patch("time.sleep"), mock.patch(
+            "qoder_autopilot.auth.oauth.requests.get", return_value=ok
+        ) as m:
+            poll_device_token(
+                "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
+                "verifier-abc",
+                max_attempts=1,
+                interval=0,
+            )
+        call = m.call_args
+        # requests.get(url, headers=..., timeout=...) — url is positional
+        assert call.args[0] == (
+            "https://openapi.qoder.sh/api/v1/deviceToken/poll"
+            "?nonce=9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d"
+            "&verifier=verifier-abc"
+            "&challenge_method=S256"
+        )
+        assert call.kwargs["headers"] == {
+            "Accept": "application/json",
+            "User-Agent": "Go-http-client/2.0",
+        }
+        assert call.kwargs["timeout"] == 15
