@@ -65,3 +65,10 @@ htmlcov/
 *.bak
 *.orig
 _archive/
+
+# ═══════════════════════════════════════════════════
+# Proxy credentials — NEVER commit
+# ═══════════════════════════════════════════════════
+proxy.txt
+proxy*.txt
+proxies*.txt
